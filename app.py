@@ -44,10 +44,12 @@ st.markdown("""
 SERPER_API_KEY = st.secrets["SERPER_API_KEY"]
 GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
 
-# --- 3. CORE LOGIC (With Guardrails) ---
+# --- 3. CORE LOGIC (With Strict Guardrails) ---
 def fetch_universal_news(topic):
     url = "https://google.serper.dev/news"
-    payload = json.dumps({"q": f"{topic} latest news OR interesting facts OR updates", "num": 3})
+    
+    # EXACT MATCH: Added quotes around {topic} to force strict Google searches
+    payload = json.dumps({"q": f"\"{topic}\" (latest news OR interesting facts OR updates)", "num": 3})
     headers = {'X-API-KEY': SERPER_API_KEY, 'Content-Type': 'application/json'}
     
     response = requests.post(url, headers=headers, data=payload)
@@ -55,7 +57,7 @@ def fetch_universal_news(topic):
     
     news_items = news_data.get('news', [])
     
-    # GUARDRAIL 1: Stop if no data is found
+    # GUARDRAIL 1: Stop if no exact data is found
     if len(news_items) == 0:
         return "NO_DATA"
     
@@ -66,6 +68,8 @@ def fetch_universal_news(topic):
 
 def generate_universal_script(topic, intel_data):
     client = Groq(api_key=GROQ_API_KEY)
+    
+    # RELEVANCE CHECK: Rule 5 forces the LLM to verify data before writing
     system_prompt = """You are an expert YouTube Shorts scriptwriter. 
     Your goal is to write a fast-paced, high-retention 60-second script based ONLY on the provided news or facts.
     Rules:
@@ -73,7 +77,7 @@ def generate_universal_script(topic, intel_data):
     2. Keep the BODY concise and focused on the hidden details.
     3. End with a quick OUTRO.
     4. Do not output anything except the script itself. Use brackets for visual cues.
-    5. CRITICAL: If the provided Intel/Facts are empty or completely irrelevant, DO NOT make things up. Output EXACTLY: "ERROR_404: Insufficient real-world data to generate a factual script." """
+    5. CRITICAL RELEVANCE CHECK: First, verify that the provided Intel/Facts are actually about the requested Topic. If the intel is completely unrelated to the topic, DO NOT try to force a connection. Output EXACTLY: "ERROR_404: Insufficient real-world data to generate a factual script." """
     
     user_prompt = f"Topic: {topic}\n\nLatest Intel/Facts:\n{intel_data}\n\nWrite the viral script now."
 
@@ -110,7 +114,7 @@ if st.button("EXECUTE PIPELINE"):
             progress_bar.progress(50)
             time.sleep(0.5)
             
-        # Check Guardrail 1
+        # Check Guardrail 1 (Empty Search)
         if topic_intel == "NO_DATA":
             st.error("`> ERROR 404: INSUFFICIENT INTEL.`")
             st.warning("The web scraper could not find enough verified facts on this topic to prevent AI hallucination. Please try a more prominent or recent topic.")
@@ -122,7 +126,7 @@ if st.button("EXECUTE PIPELINE"):
                 
             st.divider()
             
-            # Check Guardrail 2
+            # Check Guardrail 2 (Irrelevant Data / Hallucination Risk)
             if "ERROR_404" in final_script:
                 st.error("`> LLM REFUSAL: HALLUCINATION RISK DETECTED.`")
                 st.warning("The AI determined that the scraped data was irrelevant to your topic and refused to generate a fake script.")
